@@ -1,9 +1,9 @@
-from gc import callbacks
 import scrapy
 
 # Titulo = //h1/a/text()
 # Citas = //span[@class = "text" and @itemprop = "text"]/text()
 # Top ten tags = //div[contains(@class, "tags-box")]/span[@class = "tag-item"]/a/text()
+# Autores = //div[@class="quote"]//small[@class = "author" and @itemprop = "author"]/text()
 
 # Next page button = //ul[@class="pager"]/li[@class="next"]/a/@href
 
@@ -21,7 +21,28 @@ class QuotesScraper(scrapy.Spider):
    # atributo para guardar un archivo de forma automática
    custom_settings = {
       'FEED_URI': 'quotes.json', # para el nombre del archivo
-      'FEED_FORMAT': 'json' # el formato en el que se guardará
+      'FEED_FORMAT': 'json', # el formato en el que se guardará
+
+      # otras configuraciones para sacarle provecho a este framework
+      # para decirle cuantas peticiones tiene que hacer scrapy
+      'CONCURRENT_REQUESTS': 24, # que haga 24 peticiones a la vez ya que asíncrono
+
+      # cantidad de memoria ram que le permitimos usar a scrapy para trabajar
+      'MEMUSAGE_LIMIT_MB': 2048,
+
+      # si la memoria ram llega al límite se pasa hay que notificar
+      'MEMUSAGE_NOTIFY_MAIL': ['fernandocallasaca@outlook.com'],
+
+      # decirle si va a obedecer o no al archivo robots
+      'ROBOTSTXT_OBEY': True, # en lo posible siempre tru para que obedezca
+
+      # cambiar el USER_AGENT = cabecera http que está en la petición
+      # para indicar al sitio web quienes somo nosotros (chrome, safari, iphone, etc)
+      'USER_AGENT': 'fernando', # en el servidor cuando se ejecute este spider
+      # y llegue la petición ahí aparecerá la persona que hizo la petición
+
+      # Lo Tenemos que hacer para solucionar el erro de encoding
+      'FEED_EXPORT_ENCODING': 'utf-8', # para las tildes, eñes, etc 
    }
    # luego de eso de frente podemos tipear "scrapy crawl quotes"
    # y guardará lo que está en el yield como si pondriamos -o quotes.json
@@ -39,10 +60,14 @@ class QuotesScraper(scrapy.Spider):
       # preguntamos si existe kwargs
       if kwargs:
          # si existe guardamos lo que está dentro del diccionario
-         quotes = kwargs['quotes']
+         quotes_list = kwargs['quotes_list']
          # quotes es una lista
          # ahora tengo que agregar a esa lista nuevos resultados
-         quotes.extend(response.xpath('//span[@class = "text" and @itemprop = "text"]/text()').getall())
+
+         quotes = response.xpath('//span[@class = "text" and @itemprop = "text"]/text()').getall()
+         authors = response.xpath('//div[@class="quote"]//small[@class = "author" and @itemprop = "author"]/text()').getall()
+
+         quotes_list.extend([[quote, author] for quote, author in zip(quotes, authors)])
 
       # calculamos nuevamente para traerme el link "next"
       next_page_button_link = response.xpath('//ul[@class="pager"]/li[@class="next"]/a/@href').get()
@@ -51,13 +76,15 @@ class QuotesScraper(scrapy.Spider):
          yield response.follow(next_page_button_link,
                                  callback=self.parse_only_quotes,
                                  cb_kwargs = {
-                                    'quotes': quotes,
+                                    # 'quotes': quotes,
+                                    'quotes_list': quotes_list
                                  })
       # en el caso no exista otra página 'next'
       else:
          yield {
             # como ya se fue llenando lo exportamos
-            'quotes': quotes
+            # 'quotes': quotes
+            'quotes_list': quotes_list
          }
 
 
@@ -87,9 +114,10 @@ class QuotesScraper(scrapy.Spider):
       # print('*' * 10)
 
       title = response.xpath('//h1/a/text()').get()
-      quotes = response.xpath('//span[@class = "text" and @itemprop = "text"]/text()').getall()
       top_tags = response.xpath('//div[contains(@class, "tags-box")]/span[@class = "tag-item"]/a/text()').getall()
-
+      quotes = response.xpath('//span[@class = "text" and @itemprop = "text"]/text()').getall()
+      authors = response.xpath('//div[@class="quote"]//small[@class = "author" and @itemprop = "author"]/text()').getall()
+      
       # con esta linea de código
       # le preguntamos a scrapy
       # si existe dentro de la ejecución de este spider
@@ -131,7 +159,8 @@ class QuotesScraper(scrapy.Spider):
          yield response.follow(next_page_button_link,
                                  callback=self.parse_only_quotes,
                                  cb_kwargs = {
-                                    'quotes': quotes,
+                                    # 'quotes': quotes
+                                    'quotes_list': [[quote, author] for quote,author in zip(quotes, authors)]
                                  })
 
 
